@@ -24,9 +24,10 @@ contract IntensiveColearnCheckin is Ownable {
     struct User {
         address userAddress;
         uint256 totalCheckins;
-        uint256 consecutiveMissedDays;
         uint256 lastCheckinWeek;
         bool isBlocked;
+        uint256 notCheckinTimesInaWeek; // Track missed check-ins in current week
+        bool checkInToday; // Track if user checked in today
         mapping(uint256 => bool) weeklyCheckins; // week number => has checked in
     }
 
@@ -118,9 +119,10 @@ contract IntensiveColearnCheckin is Ownable {
         User storage user = users[msg.sender];
         user.userAddress = msg.sender;
         user.totalCheckins++;
-        user.consecutiveMissedDays = 0;
+        
         user.lastCheckinWeek = currentWeek;
         user.weeklyCheckins[currentWeek] = true;
+        user.checkInToday = true; // Set checkInToday to true
         userCheckins[msg.sender][currentDay] = checkinId;
         
         emit CheckinCreated(checkinId, msg.sender, note, getRealTime());
@@ -159,9 +161,8 @@ contract IntensiveColearnCheckin is Ownable {
             uint256 mehPercentage = (checkinData.mehs * 100) / totalVotes;
             if (mehPercentage >= MEH_THRESHOLD_PERCENTAGE) {
                 checkinData.isValid = false;
-                // Update user's missed days
+                // Mark weekly checkin as invalid
                 User storage user = users[checkinData.user];
-                user.consecutiveMissedDays++;
                 user.weeklyCheckins[getWeekFromTimestamp(checkinData.timestamp)] = false;
             }
         }
@@ -191,7 +192,7 @@ contract IntensiveColearnCheckin is Ownable {
         User storage userData = users[user];
         uint256 currentWeek = getCurrentWeek();
         
-        if (!userData.weeklyCheckins[currentWeek] && userData.consecutiveMissedDays >= 2) {
+        if (userData.notCheckinTimesInaWeek > 2) {
             userData.isBlocked = true;
             emit UserBlocked(user, currentWeek);
         }
@@ -219,12 +220,29 @@ contract IntensiveColearnCheckin is Ownable {
             
             usersChecked++;
             
-            // Check if user missed 2 checkins in current week
-            if (!userData.weeklyCheckins[currentWeek] && userData.consecutiveMissedDays >= 2) {
-                userData.isBlocked = true;
-                usersBlocked++;
-                emit UserBlocked(user, currentWeek);
+            // Check if user didn't check in today
+            if (!userData.checkInToday) {
+                userData.notCheckinTimesInaWeek++;
+                
+                // Block user if they missed more than 2 check-ins in a week
+                if (userData.notCheckinTimesInaWeek > 2) {
+                    userData.isBlocked = true;
+                    usersBlocked++;
+                    emit UserBlocked(user, currentWeek);
+                }
             }
+            
+            // If it's a new week, reset the weekly counter
+            if (userData.lastCheckinWeek != currentWeek) {
+                userData.notCheckinTimesInaWeek = 0;
+                userData.lastCheckinWeek = currentWeek;
+            }
+            
+            // Always update lastCheckinWeek to current week during auto checks
+            userData.lastCheckinWeek = currentWeek;
+            
+            // Reset checkInToday flag for next day
+            userData.checkInToday = false;
         }
         
         lastAutoCheckTime = getRealTime();
@@ -273,7 +291,8 @@ contract IntensiveColearnCheckin is Ownable {
     function unblockUser(address user) external onlyOwner {
         require(users[user].isBlocked, "User is not blocked");
         users[user].isBlocked = false;
-        users[user].consecutiveMissedDays = 0;
+        users[user].notCheckinTimesInaWeek = 0;
+        users[user].checkInToday = false;
         emit UserUnblocked(user);
     }
 
@@ -330,24 +349,27 @@ contract IntensiveColearnCheckin is Ownable {
      * @param user The user address
      * @return userAddress User address
      * @return totalCheckins Total number of checkins
-     * @return consecutiveMissedDays Consecutive missed days
      * @return lastCheckinWeek Last checkin week
      * @return isBlocked Whether user is blocked
+     * @return notCheckinTimesInaWeek Number of missed check-ins in current week
+     * @return checkInToday Whether user checked in today
      */
     function getUserStatus(address user) external view returns (
         address userAddress,
         uint256 totalCheckins,
-        uint256 consecutiveMissedDays,
         uint256 lastCheckinWeek,
-        bool isBlocked
+        bool isBlocked,
+        uint256 notCheckinTimesInaWeek,
+        bool checkInToday
     ) {
         User storage userData = users[user];
         return (
             userData.userAddress,
             userData.totalCheckins,
-            userData.consecutiveMissedDays,
             userData.lastCheckinWeek,
-            userData.isBlocked
+            userData.isBlocked,
+            userData.notCheckinTimesInaWeek,
+            userData.checkInToday
         );
     }
 
@@ -376,5 +398,13 @@ contract IntensiveColearnCheckin is Ownable {
 
     function getTotalCheckins() external view returns (uint256) {
         return _checkinIds;
+    }
+
+    /**
+     * @dev Reset daily check-in flag for a user (for testing purposes)
+     * @param user The user address
+     */
+    function resetDailyCheckinFlag(address user) external onlyOwner {
+        users[user].checkInToday = false;
     }
 }

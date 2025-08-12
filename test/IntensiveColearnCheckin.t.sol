@@ -33,7 +33,7 @@ contract IntensiveColearnCheckinTest is Test {
         string memory note = "Today I learned about smart contracts!";
         checkinContract.checkin(note);
         
-        (address userAddress, uint256 totalCheckins, , , bool isBlocked) = checkinContract.getUserStatus(user1);
+        (address userAddress, uint256 totalCheckins, , bool isBlocked, , ) = checkinContract.getUserStatus(user1);
         
         assertEq(userAddress, user1);
         assertEq(totalCheckins, 1);
@@ -179,7 +179,7 @@ contract IntensiveColearnCheckinTest is Test {
         checkinContract.checkAndBlockUser(user1);
         vm.stopPrank();
         
-        (, , , , bool isBlocked) = checkinContract.getUserStatus(user1);
+        (, , , bool isBlocked, , ) = checkinContract.getUserStatus(user1);
         assertEq(isBlocked, false); // Should not be blocked yet as they have checked in
     }
     
@@ -248,11 +248,10 @@ contract IntensiveColearnCheckinTest is Test {
         checkinContract.checkin("Test note");
         vm.stopPrank();
         
-        (address userAddress, uint256 totalCheckins, uint256 consecutiveMissedDays, uint256 lastCheckinWeek, bool isBlocked) = checkinContract.getUserStatus(user1);
+        (address userAddress, uint256 totalCheckins, uint256 lastCheckinWeek, bool isBlocked, , ) = checkinContract.getUserStatus(user1);
         
         assertEq(userAddress, user1);
         assertEq(totalCheckins, 1);
-        assertEq(consecutiveMissedDays, 0);
         assertEq(isBlocked, false);
     }
     
@@ -368,4 +367,106 @@ contract IntensiveColearnCheckinTest is Test {
         emit TimeSkipped(24 hours, currentTime + 24 hours);
         checkinContract.skipOneDay();
     }
+
+    // Test new weekly check-in tracking functionality
+    function testWeeklyCheckinTracking() public {
+        vm.startPrank(user1);
+        checkinContract.checkin("First checkin");
+        
+        // Check initial state
+        (,,,, uint256 notCheckinTimesInaWeek, bool checkInToday) = checkinContract.getUserStatus(user1);
+        assertEq(notCheckinTimesInaWeek, 0);
+        assertEq(checkInToday, true);
+        vm.stopPrank();
+        
+        // Skip one day and perform auto check
+        vm.prank(owner);
+        checkinContract.skipOneDay();
+        
+        // Skip additional time to ensure auto check interval has passed
+        vm.warp(block.timestamp + 25 hours);
+        
+        // Perform auto check - should increment notCheckinTimesInaWeek
+        checkinContract.performAutoCheck();
+        
+        (,,,, notCheckinTimesInaWeek, checkInToday) = checkinContract.getUserStatus(user1);
+        assertEq(notCheckinTimesInaWeek, 0); // Counter is 0 because user checked in, so first auto check doesn't increment
+        assertEq(checkInToday, false);
+    }
+
+    function testUserBlockingAfterMissingMoreThan2Days() public {
+        vm.startPrank(user1);
+        checkinContract.checkin("First checkin");
+        vm.stopPrank();
+        
+        // Skip 6 days (missing 5 days) to trigger blocking
+        for (uint i = 0; i < 6; i++) {
+            vm.prank(owner);
+            checkinContract.skipOneDay();
+            vm.warp(block.timestamp + 25 hours);
+            checkinContract.performAutoCheck();
+        }
+        
+        // User should be blocked after missing more than 2 days
+        (,,, bool isBlocked,,) = checkinContract.getUserStatus(user1);
+        assertEq(isBlocked, true);
+    }
+
+    function testWeeklyReset() public {
+        vm.startPrank(user1);
+        checkinContract.checkin("First checkin");
+        vm.stopPrank();
+        
+        // Skip 2 days and perform auto checks
+        for (uint i = 0; i < 2; i++) {
+            vm.prank(owner);
+            checkinContract.skipOneDay();
+            vm.warp(block.timestamp + 25 hours);
+            checkinContract.performAutoCheck();
+        }
+        
+        // Check that notCheckinTimesInaWeek is 1 (after 2 auto checks)
+        (,,,, uint256 notCheckinTimesInaWeek,) = checkinContract.getUserStatus(user1);
+        assertEq(notCheckinTimesInaWeek, 1);
+        
+        // Skip to next week (7 days total) and perform auto checks
+        for (uint i = 0; i < 5; i++) {
+            vm.prank(owner);
+            checkinContract.skipOneDay();
+            vm.warp(block.timestamp + 25 hours);
+            checkinContract.performAutoCheck();
+        }
+        
+        (,,,, notCheckinTimesInaWeek,) = checkinContract.getUserStatus(user1);
+        assertEq(notCheckinTimesInaWeek, 0);
+    }
+
+    function testCheckinResetsWeeklyCounter() public {
+        vm.startPrank(user1);
+        checkinContract.checkin("First checkin");
+        vm.stopPrank();
+        
+        // Skip 2 days and perform auto checks
+        for (uint i = 0; i < 2; i++) {
+            vm.prank(owner);
+            checkinContract.skipOneDay();
+            vm.warp(block.timestamp + 25 hours);
+            checkinContract.performAutoCheck();
+        }
+        
+        // Check that notCheckinTimesInaWeek is 1 (after 2 auto checks)
+        (,,,, uint256 notCheckinTimesInaWeek,) = checkinContract.getUserStatus(user1);
+        assertEq(notCheckinTimesInaWeek, 1);
+        
+        // Check in again - should set checkInToday to true
+        vm.startPrank(user1);
+        checkinContract.checkin("Second checkin");
+        vm.stopPrank();
+        
+        (,,,, uint256 notCheckinTimesInaWeek2, bool checkInToday) = checkinContract.getUserStatus(user1);
+        assertEq(notCheckinTimesInaWeek2, 1); // Should be 1 because user checked in, so next auto check won't increment
+        assertEq(checkInToday, true);
+    }
+
+
 }
