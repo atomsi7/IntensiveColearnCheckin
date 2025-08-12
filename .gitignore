@@ -12,3 +12,9 @@ docs/
 
 # Dotenv file
 .env
+
+# Foundry
+lib/forge-std/
+
+# Node
+node_modules/
