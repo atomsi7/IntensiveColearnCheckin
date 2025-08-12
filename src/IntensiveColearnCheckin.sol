@@ -42,6 +42,9 @@ contract IntensiveColearnCheckin is Ownable {
     address[] public registeredUsers;
     mapping(address => bool) public isRegisteredUser;
     
+    // Time manipulation variable
+    uint256 public skipedTime;
+    
     // Events
     event CheckinCreated(uint256 indexed checkinId, address indexed user, string note, uint256 timestamp);
     event CheckinLiked(uint256 indexed checkinId, address indexed liker);
@@ -49,6 +52,7 @@ contract IntensiveColearnCheckin is Ownable {
     event UserBlocked(address indexed user, uint256 week);
     event UserUnblocked(address indexed user);
     event AutoCheckPerformed(uint256 timestamp, uint256 usersChecked, uint256 usersBlocked);
+    event TimeSkipped(uint256 skippedSeconds, uint256 newRealTime);
 
     // Constants
     uint256 public constant DAYS_IN_WEEK = 7;
@@ -56,7 +60,23 @@ contract IntensiveColearnCheckin is Ownable {
     uint256 public constant SECONDS_IN_DAY = 86400;
 
     constructor() Ownable(msg.sender) {
-        lastAutoCheckTime = block.timestamp;
+        lastAutoCheckTime = getRealTime();
+    }
+
+    /**
+     * @dev Skip one day (24 hours) - only owner can call
+     */
+    function skipOneDay() external onlyOwner {
+        skipedTime += 24 hours;
+        emit TimeSkipped(24 hours, getRealTime());
+    }
+
+    /**
+     * @dev Get the real time (block.timestamp + skipedTime)
+     * @return The real time
+     */
+    function getRealTime() public view returns (uint256) {
+        return block.timestamp + skipedTime;
     }
 
     /**
@@ -87,7 +107,7 @@ contract IntensiveColearnCheckin is Ownable {
             id: checkinId,
             user: msg.sender,
             note: note,
-            timestamp: block.timestamp,
+            timestamp: getRealTime(),
             likes: 0,
             mehs: 0,
             isLikedByOrganizer: false,
@@ -103,7 +123,7 @@ contract IntensiveColearnCheckin is Ownable {
         user.weeklyCheckins[currentWeek] = true;
         userCheckins[msg.sender][currentDay] = checkinId;
         
-        emit CheckinCreated(checkinId, msg.sender, note, block.timestamp);
+        emit CheckinCreated(checkinId, msg.sender, note, getRealTime());
     }
 
     /**
@@ -182,7 +202,7 @@ contract IntensiveColearnCheckin is Ownable {
      * Can be called by anyone, but only executes if 24 hours have passed
      */
     function performAutoCheck() external {
-        require(block.timestamp >= lastAutoCheckTime + AUTO_CHECK_INTERVAL, "Auto check not due yet");
+        require(getRealTime() >= lastAutoCheckTime + AUTO_CHECK_INTERVAL, "Auto check not due yet");
         
         uint256 usersChecked = 0;
         uint256 usersBlocked = 0;
@@ -207,8 +227,8 @@ contract IntensiveColearnCheckin is Ownable {
             }
         }
         
-        lastAutoCheckTime = block.timestamp;
-        emit AutoCheckPerformed(block.timestamp, usersChecked, usersBlocked);
+        lastAutoCheckTime = getRealTime();
+        emit AutoCheckPerformed(getRealTime(), usersChecked, usersBlocked);
     }
 
     /**
@@ -216,7 +236,7 @@ contract IntensiveColearnCheckin is Ownable {
      * @return Whether auto check can be performed
      */
     function isAutoCheckDue() external view returns (bool) {
-        return block.timestamp >= lastAutoCheckTime + AUTO_CHECK_INTERVAL;
+        return getRealTime() >= lastAutoCheckTime + AUTO_CHECK_INTERVAL;
     }
 
     /**
@@ -224,10 +244,10 @@ contract IntensiveColearnCheckin is Ownable {
      * @return Seconds until next auto check
      */
     function getTimeUntilNextAutoCheck() external view returns (uint256) {
-        if (block.timestamp >= lastAutoCheckTime + AUTO_CHECK_INTERVAL) {
+        if (getRealTime() >= lastAutoCheckTime + AUTO_CHECK_INTERVAL) {
             return 0;
         }
-        return (lastAutoCheckTime + AUTO_CHECK_INTERVAL) - block.timestamp;
+        return (lastAutoCheckTime + AUTO_CHECK_INTERVAL) - getRealTime();
     }
 
     /**
@@ -343,11 +363,11 @@ contract IntensiveColearnCheckin is Ownable {
 
     // Helper functions
     function getCurrentWeek() public view returns (uint256) {
-        return block.timestamp / (DAYS_IN_WEEK * SECONDS_IN_DAY);
+        return getRealTime() / (DAYS_IN_WEEK * SECONDS_IN_DAY);
     }
 
     function getCurrentDay() public view returns (uint256) {
-        return block.timestamp / SECONDS_IN_DAY;
+        return getRealTime() / SECONDS_IN_DAY;
     }
 
     function getWeekFromTimestamp(uint256 timestamp) public pure returns (uint256) {

@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
 import "../src/IntensiveColearnCheckin.sol";
+import "openzeppelin-contracts/contracts/access/Ownable.sol";
 
 /**
  * @title IntensiveColearnCheckin Test
@@ -15,6 +16,9 @@ contract IntensiveColearnCheckinTest is Test {
     address public user1 = address(0x2);
     address public user2 = address(0x3);
     address public user3 = address(0x4);
+    
+    // Event for testing
+    event TimeSkipped(uint256 skippedSeconds, uint256 newRealTime);
     
     function setUp() public {
         vm.startPrank(owner);
@@ -334,5 +338,34 @@ contract IntensiveColearnCheckinTest is Test {
     function testInvalidCheckinIdForGetCheckin() public {
         vm.expectRevert("Invalid checkin ID");
         checkinContract.getCheckin(999);
+    }
+
+    function testSkipOneDay() public {
+        uint256 initialTime = checkinContract.getRealTime();
+        uint256 initialSkippedTime = checkinContract.skipedTime();
+        
+        // Only owner can skip time
+        vm.prank(owner);
+        checkinContract.skipOneDay();
+        
+        uint256 newTime = checkinContract.getRealTime();
+        uint256 newSkippedTime = checkinContract.skipedTime();
+        
+        assertEq(newSkippedTime, initialSkippedTime + 24 hours, "Skipped time should increase by 24 hours");
+        assertEq(newTime, initialTime + 24 hours, "Real time should increase by 24 hours");
+    }
+
+    function testNonOwnerCannotSkipOneDay() public {
+        vm.prank(user1);
+        vm.expectRevert();
+        checkinContract.skipOneDay();
+    }
+
+    function testSkipOneDayEvent() public {
+        uint256 currentTime = checkinContract.getRealTime();
+        vm.prank(owner);
+        vm.expectEmit(true, true, false, true);
+        emit TimeSkipped(24 hours, currentTime + 24 hours);
+        checkinContract.skipOneDay();
     }
 }

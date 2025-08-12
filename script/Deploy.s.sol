@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "forge-std/Script.sol";
-import "../src/IntensiveColearnCheckin.sol";
+import {Script, console} from "forge-std/Script.sol";
+import {IntensiveColearnCheckin} from "../src/IntensiveColearnCheckin.sol";
 
 /**
  * @title Deploy Script
