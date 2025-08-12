@@ -1,24 +1,66 @@
-# IntensiveColearnCheckin
+## Foundry
 
-IntensiveColearnCheckin Dapp is as the form of the [IntensiveColearn](https://intensivecolearn.ing/) Checkin, but on chain, mantained and interacted with the smart contract.
+**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
 
-## Features
+Foundry consists of:
 
-### Original Features
+-   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
+-   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
+-   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
+-   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
-- User can checkin each day, with a note.
-- User who do not checkin twice in a week will be blocked.
+## Documentation
 
-- User can review all user's history.
+https://book.getfoundry.sh/
 
-### Addition Features
+## Usage
 
-- User can review peer's notes, and like it or 'Meh' it(think it's unimpressive).
-- The checkin note which got 'Meh' of 67% will be viewed as not checkin.
-- The checkin note liked by orgnizer will be viewed as checkin.
+### Build
 
-## Tech Stack
+```shell
+$ forge build
+```
 
-- Frontend: React, TailwindCSS, RainbowKit, Wagmi, Vite
-- Smart Contract: Solidity
-- Dev Kit: Foundry
+### Test
+
+```shell
+$ forge test
+```
+
+### Format
+
+```shell
+$ forge fmt
+```
+
+### Gas Snapshots
+
+```shell
+$ forge snapshot
+```
+
+### Anvil
+
+```shell
+$ anvil
+```
+
+### Deploy
+
+```shell
+$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
+```
+
+### Cast
+
+```shell
+$ cast <subcommand>
+```
+
+### Help
+
+```shell
+$ forge --help
+$ anvil --help
+$ cast --help
+```
