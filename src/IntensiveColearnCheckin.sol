@@ -292,7 +292,6 @@ contract IntensiveColearnCheckin is Ownable {
      * Checks userCheckins mapping to determine missed days in all weeks
      */
     function performAutoCheck() external {
-        require(getRealTime() >= lastAutoCheckTime + AUTO_CHECK_INTERVAL, "Auto check not due yet");
         
         uint256 usersChecked = 0;
         uint256 usersBlocked = 0;
@@ -516,6 +515,80 @@ contract IntensiveColearnCheckin is Ownable {
 
     function getTotalCheckins() external view returns (uint256) {
         return _checkinIds;
+    }
+
+    /**
+     * @dev Get current week's checkin status for a user
+     * @param user The user address
+     * @return weekNumber The current week number
+     * @return checkinStatuses Array of 7 booleans representing each day's checkin status (Monday to Sunday)
+     * @return checkinIds Array of 7 checkin IDs for each day (0 if no checkin)
+     * @return validStatuses Array of 7 booleans representing if each day's checkin is valid
+     */
+    function getCurrentWeekCheckinStatus(address user) external view returns (
+        uint256 weekNumber,
+        bool[7] memory checkinStatuses,
+        uint256[7] memory checkinIds,
+        bool[7] memory validStatuses
+    ) {
+        uint256 currentWeek = getCurrentWeek();
+        uint256 weekStartDay = currentWeek * DAYS_IN_WEEK;
+        
+        weekNumber = currentWeek;
+        
+        // Initialize arrays
+        for (uint256 i = 0; i < 7; i++) {
+            uint256 dayNumber = weekStartDay + i;
+            uint256 checkinId = userCheckins[user][dayNumber];
+            
+            checkinIds[i] = checkinId;
+            checkinStatuses[i] = checkinId > 0;
+            
+            if (checkinId > 0) {
+                validStatuses[i] = checkins[checkinId].isValid;
+            } else {
+                validStatuses[i] = false;
+            }
+        }
+        
+        return (weekNumber, checkinStatuses, checkinIds, validStatuses);
+    }
+
+    /**
+     * @dev Get checkin status for a specific week for a user
+     * @param user The user address
+     * @param week The week number
+     * @return weekNumber The requested week number
+     * @return checkinStatuses Array of 7 booleans representing each day's checkin status (Monday to Sunday)
+     * @return checkinIds Array of 7 checkin IDs for each day (0 if no checkin)
+     * @return validStatuses Array of 7 booleans representing if each day's checkin is valid
+     */
+    function getWeekCheckinStatus(address user, uint256 week) external view returns (
+        uint256 weekNumber,
+        bool[7] memory checkinStatuses,
+        uint256[7] memory checkinIds,
+        bool[7] memory validStatuses
+    ) {
+        uint256 weekStartDay = week * DAYS_IN_WEEK;
+        
+        weekNumber = week;
+        
+        // Initialize arrays
+        for (uint256 i = 0; i < 7; i++) {
+            uint256 dayNumber = weekStartDay + i;
+            uint256 checkinId = userCheckins[user][dayNumber];
+            
+            checkinIds[i] = checkinId;
+            checkinStatuses[i] = checkinId > 0;
+            
+            if (checkinId > 0) {
+                validStatuses[i] = checkins[checkinId].isValid;
+            } else {
+                validStatuses[i] = false;
+            }
+        }
+        
+        return (weekNumber, checkinStatuses, checkinIds, validStatuses);
     }
 
     /**
