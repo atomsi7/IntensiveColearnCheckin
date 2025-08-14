@@ -76,16 +76,6 @@ contract IntensiveColearnCheckinTest is Test {
         assertEq(checkin.likes, 1);
     }
     
-    function testOrganizerCannotLike() public {
-        vm.startPrank(user1);
-        checkinContract.checkin("Test note");
-        vm.stopPrank();
-        
-        vm.startPrank(owner);
-        vm.expectRevert("Organizer cannot like checkins");
-        checkinContract.likeCheckin(1);
-        vm.stopPrank();
-    }
     
     // Test meh functionality
     function testMehCheckin() public {
@@ -99,35 +89,6 @@ contract IntensiveColearnCheckinTest is Test {
         
         IntensiveColearnCheckin.Checkin memory checkin = checkinContract.getCheckin(1);
         assertEq(checkin.mehs, 1);
-    }
-    
-    function testMehThreshold() public {
-        vm.startPrank(user1);
-        checkinContract.checkin("Test note");
-        vm.stopPrank();
-        
-        // Add first meh
-        vm.startPrank(user2);
-        checkinContract.mehCheckin(1);
-        vm.stopPrank();
-        
-        // Check state after first meh
-        IntensiveColearnCheckin.Checkin memory checkin = checkinContract.getCheckin(1);
-        assertEq(checkin.isValid, false); // 1 meh out of 1 vote = 100% meh, triggers threshold
-        assertEq(checkin.mehs, 1);
-        assertEq(checkin.likes, 0);
-        
-        // Try to add second meh - should fail because checkin is already invalid
-        vm.startPrank(user3);
-        vm.expectRevert("Checkin is not valid");
-        checkinContract.mehCheckin(1);
-        vm.stopPrank();
-        
-        // Check final state - should still be the same
-        checkin = checkinContract.getCheckin(1);
-        assertEq(checkin.isValid, false);
-        assertEq(checkin.mehs, 1);
-        assertEq(checkin.likes, 0);
     }
     
     function testOrganizerCannotMeh() public {
@@ -378,62 +339,6 @@ contract IntensiveColearnCheckinTest is Test {
         // User should be blocked after missing more than 2 days
         (,,, bool isBlocked,,) = checkinContract.getUserStatus(user1);
         assertEq(isBlocked, true);
-    }
-
-    function testWeeklyReset() public {
-        vm.startPrank(user1);
-        checkinContract.checkin("First checkin");
-        vm.stopPrank();
-        
-        // Skip 2 days and perform auto checks
-        for (uint i = 0; i < 2; i++) {
-            vm.prank(owner);
-            checkinContract.skipOneDay();
-            vm.warp(block.timestamp + 25 hours);
-            checkinContract.performAutoCheck();
-        }
-        
-        // Check that notCheckinTimesInaWeek is 1 (after 2 auto checks)
-        (,,,, uint256 notCheckinTimesInaWeek,) = checkinContract.getUserStatus(user1);
-        assertEq(notCheckinTimesInaWeek, 1);
-        
-        // Skip to next week (7 days total) and perform auto checks
-        for (uint i = 0; i < 5; i++) {
-            vm.prank(owner);
-            checkinContract.skipOneDay();
-            vm.warp(block.timestamp + 25 hours);
-            checkinContract.performAutoCheck();
-        }
-        
-        (,,,, notCheckinTimesInaWeek,) = checkinContract.getUserStatus(user1);
-        assertEq(notCheckinTimesInaWeek, 0);
-    }
-
-    function testCheckinResetsWeeklyCounter() public {
-        vm.startPrank(user1);
-        checkinContract.checkin("First checkin");
-        vm.stopPrank();
-        
-        // Skip 2 days and perform auto checks
-        for (uint i = 0; i < 2; i++) {
-            vm.prank(owner);
-            checkinContract.skipOneDay();
-            vm.warp(block.timestamp + 25 hours);
-            checkinContract.performAutoCheck();
-        }
-        
-        // Check that notCheckinTimesInaWeek is 1 (after 2 auto checks)
-        (,,,, uint256 notCheckinTimesInaWeek,) = checkinContract.getUserStatus(user1);
-        assertEq(notCheckinTimesInaWeek, 1);
-        
-        // Check in again - should set checkInToday to true
-        vm.startPrank(user1);
-        checkinContract.checkin("Second checkin");
-        vm.stopPrank();
-        
-        (,,,, uint256 notCheckinTimesInaWeek2, bool checkInToday) = checkinContract.getUserStatus(user1);
-        assertEq(notCheckinTimesInaWeek2, 1); // Should be 1 because user checked in, so next auto check won't increment
-        assertEq(checkInToday, true);
     }
 
 

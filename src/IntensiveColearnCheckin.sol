@@ -37,6 +37,10 @@ contract IntensiveColearnCheckin is Ownable {
     mapping(uint256 => Checkin) public checkins;
     mapping(address => mapping(uint256 => uint256)) public userCheckins; // user => week => checkinId
     
+    // User interaction tracking for like/meh functionality
+    mapping(address => mapping(uint256 => bool)) public userLikedCheckin; // user => checkinId => has liked
+    mapping(address => mapping(uint256 => bool)) public userMehedCheckin; // user => checkinId => has mehed
+    
     // Automatic checking variables
     uint256 public lastAutoCheckTime;
     uint256 public constant AUTO_CHECK_INTERVAL = 24 hours;
@@ -50,6 +54,8 @@ contract IntensiveColearnCheckin is Ownable {
     event CheckinCreated(uint256 indexed checkinId, address indexed user, string note, uint256 timestamp);
     event CheckinLiked(uint256 indexed checkinId, address indexed liker);
     event CheckinMehed(uint256 indexed checkinId, address indexed meher);
+    event CheckinUnliked(uint256 indexed checkinId, address indexed unliker);
+    event CheckinUnmehed(uint256 indexed checkinId, address indexed unmeher);
     event UserBlocked(address indexed user, uint256 week);
     event UserUnblocked(address indexed user);
     event AutoCheckPerformed(uint256 timestamp, uint256 usersChecked, uint256 usersBlocked);
@@ -133,7 +139,6 @@ contract IntensiveColearnCheckin is Ownable {
         
         emit CheckinCreated(checkinId, msg.sender, note, getRealTime());
     }
-    //TODO: user can only like or meh checkin once, if they already liked or meh, they can't do it again. can only like a checkin or meh a checkin.
 
     /**
      * @dev Like a checkin (only non-owners can like)
@@ -141,10 +146,12 @@ contract IntensiveColearnCheckin is Ownable {
      */
     function likeCheckin(uint256 checkinId) external {
         require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
-        // TODO: user can only like checkin once
+        require(!userLikedCheckin[msg.sender][checkinId], "Already liked this checkin");
+        require(!userMehedCheckin[msg.sender][checkinId], "Cannot like a checkin you have mehed");
         
         Checkin storage checkinData = checkins[checkinId];
         checkinData.likes++;
+        userLikedCheckin[msg.sender][checkinId] = true;
 
         if (msg.sender == owner()) {
             checkinData.isLikedByOrganizer = true;
@@ -163,10 +170,12 @@ contract IntensiveColearnCheckin is Ownable {
     function mehCheckin(uint256 checkinId) external {
         require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
         require(msg.sender != owner(), "Organizer cannot meh checkins");
-        // TODO: user can only meh checkin once
+        require(!userMehedCheckin[msg.sender][checkinId], "Already mehed this checkin");
+        require(!userLikedCheckin[msg.sender][checkinId], "Cannot meh a checkin you have liked");
         
         Checkin storage checkinData = checkins[checkinId];
         checkinData.mehs++;
+        userMehedCheckin[msg.sender][checkinId] = true;
         
         // Check if meh threshold is reached
         if (!checkinData.isLikedByOrganizer) {
@@ -180,6 +189,83 @@ contract IntensiveColearnCheckin is Ownable {
         }
         
         emit CheckinMehed(checkinId, msg.sender);
+    }
+
+    /**
+     * @dev Unlike a checkin (only non-owners can unlike)
+     * @param checkinId The ID of the checkin to unlike
+     */
+    function unlikeCheckin(uint256 checkinId) external {
+        require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
+        require(userLikedCheckin[msg.sender][checkinId], "Have not liked this checkin");
+        
+        Checkin storage checkinData = checkins[checkinId];
+        checkinData.likes--;
+        userLikedCheckin[msg.sender][checkinId] = false;
+
+        if (msg.sender == owner()) {
+            checkinData.isLikedByOrganizer = false;
+            // Recalculate meh threshold since organizer unlike removed protection
+            uint256 totalVotes = checkinData.likes + checkinData.mehs;
+            if (totalVotes > 0) {
+                uint256 mehPercentage = (checkinData.mehs * 100) / registeredUsers.length;
+                if (mehPercentage >= MEH_THRESHOLD_PERCENTAGE) {
+                    checkinData.isValid = false;
+                }
+            }
+        }
+        
+        emit CheckinUnliked(checkinId, msg.sender);
+    }
+
+    /**
+     * @dev Unmeh a checkin (only non-owners can unmeh)
+     * @param checkinId The ID of the checkin to unmeh
+     */
+    function unmehCheckin(uint256 checkinId) external {
+        require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
+        require(msg.sender != owner(), "Organizer cannot unmeh checkins");
+        require(userMehedCheckin[msg.sender][checkinId], "Have not mehed this checkin");
+        
+        Checkin storage checkinData = checkins[checkinId];
+        checkinData.mehs--;
+        userMehedCheckin[msg.sender][checkinId] = false;
+        
+        // Recalculate meh threshold since we removed a meh
+        if (!checkinData.isLikedByOrganizer) {
+            uint256 totalVotes = checkinData.likes + checkinData.mehs;
+            if (totalVotes > 0) {
+                uint256 mehPercentage = (checkinData.mehs * 100) / registeredUsers.length;
+                if (mehPercentage < MEH_THRESHOLD_PERCENTAGE) {
+                    checkinData.isValid = true;
+                }
+            } else {
+                // No votes left, checkin is valid
+                checkinData.isValid = true;
+            }
+        }
+        
+        emit CheckinUnmehed(checkinId, msg.sender);
+    }
+
+    /**
+     * @dev Check if user has liked a specific checkin
+     * @param user The user address
+     * @param checkinId The checkin ID
+     * @return Whether user has liked the checkin
+     */
+    function hasUserLikedCheckin(address user, uint256 checkinId) external view returns (bool) {
+        return userLikedCheckin[user][checkinId];
+    }
+
+    /**
+     * @dev Check if user has mehed a specific checkin
+     * @param user The user address
+     * @param checkinId The checkin ID
+     * @return Whether user has mehed the checkin
+     */
+    function hasUserMehedCheckin(address user, uint256 checkinId) external view returns (bool) {
+        return userMehedCheckin[user][checkinId];
     }
 
     /**
