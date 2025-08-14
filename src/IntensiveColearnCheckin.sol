@@ -59,6 +59,7 @@ contract IntensiveColearnCheckin is Ownable {
     uint256 public constant DAYS_IN_WEEK = 7;
     uint256 public constant MEH_THRESHOLD_PERCENTAGE = 67; // 67% meh threshold
     uint256 public constant SECONDS_IN_DAY = 86400;
+    uint256 public constant ALLOWED_MISSING_CHECKINS_PER_WEEK = 2;
 
     constructor() Ownable(msg.sender) {
         lastAutoCheckTime = getRealTime();
@@ -69,6 +70,11 @@ contract IntensiveColearnCheckin is Ownable {
      */
     function skipOneDay() external onlyOwner {
         skipedTime += 24 hours;
+        // Reset checkInToday flag for all users when time is skipped
+        for (uint256 i = 0; i < registeredUsers.length; i++) {
+            address user = registeredUsers[i];
+            users[user].checkInToday = false;
+        }
         emit TimeSkipped(24 hours, getRealTime());
     }
 
@@ -127,6 +133,7 @@ contract IntensiveColearnCheckin is Ownable {
         
         emit CheckinCreated(checkinId, msg.sender, note, getRealTime());
     }
+    //TODO: user can only like or meh checkin once, if they already liked or meh, they can't do it again. can only like a checkin or meh a checkin.
 
     /**
      * @dev Like a checkin (only non-owners can like)
@@ -134,11 +141,17 @@ contract IntensiveColearnCheckin is Ownable {
      */
     function likeCheckin(uint256 checkinId) external {
         require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
-        require(msg.sender != owner(), "Organizer cannot like checkins");
-        require(checkins[checkinId].isValid, "Checkin is not valid");
+        // TODO: user can only like checkin once
         
         Checkin storage checkinData = checkins[checkinId];
         checkinData.likes++;
+
+        if (msg.sender == owner()) {
+            checkinData.isLikedByOrganizer = true;
+            if (checkinData.isValid == false) {
+                checkinData.isValid = true;
+            }
+        }
         
         emit CheckinLiked(checkinId, msg.sender);
     }
@@ -150,38 +163,23 @@ contract IntensiveColearnCheckin is Ownable {
     function mehCheckin(uint256 checkinId) external {
         require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
         require(msg.sender != owner(), "Organizer cannot meh checkins");
-        require(checkins[checkinId].isValid, "Checkin is not valid");
+        // TODO: user can only meh checkin once
         
         Checkin storage checkinData = checkins[checkinId];
         checkinData.mehs++;
         
         // Check if meh threshold is reached
-        uint256 totalVotes = checkinData.likes + checkinData.mehs;
-        if (totalVotes > 0) {
-            uint256 mehPercentage = (checkinData.mehs * 100) / totalVotes;
-            if (mehPercentage >= MEH_THRESHOLD_PERCENTAGE) {
-                checkinData.isValid = false;
-                // Mark weekly checkin as invalid
-                User storage user = users[checkinData.user];
-                user.weeklyCheckins[getWeekFromTimestamp(checkinData.timestamp)] = false;
+        if (!checkinData.isLikedByOrganizer) {
+            uint256 totalVotes = checkinData.likes + checkinData.mehs;
+            if (totalVotes > 0) {
+                uint256 mehPercentage = (checkinData.mehs * 100) / registeredUsers.length;
+                if (mehPercentage >= MEH_THRESHOLD_PERCENTAGE) {
+                    checkinData.isValid = false;
+                }
             }
         }
         
         emit CheckinMehed(checkinId, msg.sender);
-    }
-
-    /**
-     * @dev Organizer can like a checkin to mark it as valid
-     * @param checkinId The ID of the checkin to like
-     */
-    function organizerLikeCheckin(uint256 checkinId) external onlyOwner {
-        require(checkinId > 0 && checkinId <= _checkinIds, "Invalid checkin ID");
-        require(checkins[checkinId].isValid, "Checkin is not valid");
-        
-        Checkin storage checkinData = checkins[checkinId];
-        checkinData.isLikedByOrganizer = true;
-        
-        emit CheckinLiked(checkinId, msg.sender);
     }
 
     /**
@@ -201,6 +199,7 @@ contract IntensiveColearnCheckin is Ownable {
     /**
      * @dev Automatically check and block users every 24 hours
      * Can be called by anyone, but only executes if 24 hours have passed
+     * Checks userCheckins mapping to determine missed days in all weeks
      */
     function performAutoCheck() external {
         require(getRealTime() >= lastAutoCheckTime + AUTO_CHECK_INTERVAL, "Auto check not due yet");
@@ -208,6 +207,7 @@ contract IntensiveColearnCheckin is Ownable {
         uint256 usersChecked = 0;
         uint256 usersBlocked = 0;
         uint256 currentWeek = getCurrentWeek();
+        bool userAlreadyBlocked = false;
         
         for (uint256 i = 0; i < registeredUsers.length; i++) {
             address user = registeredUsers[i];
@@ -215,34 +215,48 @@ contract IntensiveColearnCheckin is Ownable {
             
             // Skip if user is already blocked
             if (userData.isBlocked) {
-                continue;
+                userAlreadyBlocked = true;
             }
             
             usersChecked++;
             
-            // Check if user didn't check in today
-            if (!userData.checkInToday) {
-                userData.notCheckinTimesInaWeek++;
+            // Check all weeks from the beginning to current week
+            bool shouldBlock = false;
+            for (uint256 week = 0; week <= currentWeek; week++) {
+                uint256 weekStartDay = week * DAYS_IN_WEEK;
+                uint256 weekEndDay = weekStartDay + DAYS_IN_WEEK - 1;
                 
-                // Block user if they missed more than 2 check-ins in a week
-                if (userData.notCheckinTimesInaWeek > 2) {
-                    userData.isBlocked = true;
-                    usersBlocked++;
-                    emit UserBlocked(user, currentWeek);
+                // Count missed days in this week
+                uint256 missedDays = 0;
+                for (uint256 day = weekStartDay; day <= weekEndDay; day++) {
+                    uint256 checkinId = userCheckins[user][day];
+                    if (checkinId == 0) {
+                        // No checkin for this day
+                        missedDays++;
+                    } else {
+                        // Check if the checkin is valid (not invalidated by mehs)
+                        Checkin storage checkinData = checkins[checkinId];
+                        if (!checkinData.isValid) {
+                            // Checkin was invalidated, count as missed day
+                            missedDays++;
+                        }
+                    }
+                }
+                
+                // If user missed 2 or more days in any week, they should be blocked
+                if (missedDays > ALLOWED_MISSING_CHECKINS_PER_WEEK) {
+                    shouldBlock = true;
+                    break; // No need to check other weeks if we found a violation
                 }
             }
             
-            // If it's a new week, reset the weekly counter
-            if (userData.lastCheckinWeek != currentWeek) {
-                userData.notCheckinTimesInaWeek = 0;
-                userData.lastCheckinWeek = currentWeek;
+            // Block user if they missed 2 or more days in any week
+            if (shouldBlock && !userAlreadyBlocked) {
+                userData.isBlocked = true;
+                usersBlocked++;
+                emit UserBlocked(user, currentWeek);
             }
             
-            // Always update lastCheckinWeek to current week during auto checks
-            userData.lastCheckinWeek = currentWeek;
-            
-            // Reset checkInToday flag for next day
-            userData.checkInToday = false;
         }
         
         lastAutoCheckTime = getRealTime();

@@ -141,31 +141,6 @@ contract IntensiveColearnCheckinTest is Test {
         vm.stopPrank();
     }
     
-    // Test organizer like functionality
-    function testOrganizerLikeCheckin() public {
-        vm.startPrank(user1);
-        checkinContract.checkin("Test note");
-        vm.stopPrank();
-        
-        vm.startPrank(owner);
-        checkinContract.organizerLikeCheckin(1);
-        vm.stopPrank();
-        
-        IntensiveColearnCheckin.Checkin memory checkin = checkinContract.getCheckin(1);
-        assertEq(checkin.isLikedByOrganizer, true);
-    }
-    
-    function testNonOrganizerCannotOrganizerLike() public {
-        vm.startPrank(user1);
-        checkinContract.checkin("Test note");
-        vm.stopPrank();
-        
-        vm.startPrank(user2);
-        vm.expectRevert();
-        checkinContract.organizerLikeCheckin(1);
-        vm.stopPrank();
-    }
-    
     // Test user blocking functionality
     function testBlockUser() public {
         vm.startPrank(user1);
@@ -324,13 +299,6 @@ contract IntensiveColearnCheckinTest is Test {
         vm.startPrank(user1);
         vm.expectRevert("Invalid checkin ID");
         checkinContract.mehCheckin(999);
-        vm.stopPrank();
-    }
-    
-    function testInvalidCheckinIdForOrganizerLike() public {
-        vm.startPrank(owner);
-        vm.expectRevert("Invalid checkin ID");
-        checkinContract.organizerLikeCheckin(999);
         vm.stopPrank();
     }
     
