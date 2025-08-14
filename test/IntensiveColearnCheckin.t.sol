@@ -21,6 +21,7 @@ contract IntensiveColearnCheckinTest is Test {
     event TimeSkipped(uint256 skippedSeconds, uint256 newRealTime);
     
     function setUp() public {
+        vm.warp(block.timestamp + 1704067200);//// January 1, 2024 00:00:00 UTC
         vm.startPrank(owner);
         checkinContract = new IntensiveColearnCheckin();
         vm.stopPrank();
@@ -341,5 +342,33 @@ contract IntensiveColearnCheckinTest is Test {
         assertEq(isBlocked, true);
     }
 
+    function testOwnerCheckinSkipOneDayAndAutoCheck() public {
+        // Owner performs checkin
+        vm.startPrank(owner);
+        checkinContract.checkin("Owner's first checkin");
+        
+        // Verify owner status after checkin
+        (address userAddress, uint256 totalCheckins, , bool isBlocked, , bool checkInToday) = checkinContract.getUserStatus(owner);
+        assertEq(userAddress, owner);
+        assertEq(totalCheckins, 1);
+        assertEq(isBlocked, false);
+        assertEq(checkInToday, true);
+        vm.stopPrank();
+        
+        // Owner skips one day
+        vm.prank(owner);
+        checkinContract.skipOneDay();
+        
+        // Skip additional time to ensure auto check interval has passed
+        vm.warp(block.timestamp + 25 hours);
+        
+        // Perform auto check
+        checkinContract.performAutoCheck();
+        
+        // Verify owner status should not be blocked after skipping one day
+        (,,, isBlocked,, checkInToday) = checkinContract.getUserStatus(owner);
+        assertEq(isBlocked, false, "Owner should not be blocked after skipping one day");
+        assertEq(checkInToday, false, "Owner should not have checked in today after time skip");
+    }
 
 }

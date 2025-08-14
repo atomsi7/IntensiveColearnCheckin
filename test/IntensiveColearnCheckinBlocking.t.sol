@@ -21,6 +21,7 @@ contract IntensiveColearnCheckinBlockingTest is Test {
     address public user7 = address(0x8);
     
     function setUp() public {
+        vm.warp(block.timestamp + 1704067200);//// January 1, 2024 00:00:00 UTC
         vm.startPrank(owner);
         checkinContract = new IntensiveColearnCheckin();
         vm.stopPrank();

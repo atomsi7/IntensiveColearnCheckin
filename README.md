@@ -26,4 +26,4 @@ IntensiveColearnCheckin Dapp is as the form of the [IntensiveColearn](https://in
 ## TODOs
 
 - [ ] Optimize how the checkin record is stored in the smart contract.
-    - [ ] Optimize how the autocheck works.
+  - [ ] Optimize how the autocheck works.

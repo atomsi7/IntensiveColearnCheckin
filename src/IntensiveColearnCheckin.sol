@@ -50,6 +50,9 @@ contract IntensiveColearnCheckin is Ownable {
     // Time manipulation variable
     uint256 public skipedTime;
     
+    // Deployment timestamp for relative time calculations
+    uint256 public deploymentTimestamp;
+    
     // Events
     event CheckinCreated(uint256 indexed checkinId, address indexed user, string note, uint256 timestamp);
     event CheckinLiked(uint256 indexed checkinId, address indexed liker);
@@ -69,6 +72,7 @@ contract IntensiveColearnCheckin is Ownable {
 
     constructor() Ownable(msg.sender) {
         lastAutoCheckTime = getRealTime();
+        deploymentTimestamp = block.timestamp;
     }
 
     /**
@@ -293,9 +297,9 @@ contract IntensiveColearnCheckin is Ownable {
         uint256 usersChecked = 0;
         uint256 usersBlocked = 0;
         uint256 currentWeek = getCurrentWeek();
-        bool userAlreadyBlocked = false;
         
         for (uint256 i = 0; i < registeredUsers.length; i++) {
+            bool userAlreadyBlocked = false;
             address user = registeredUsers[i];
             User storage userData = users[user];
             
@@ -306,11 +310,18 @@ contract IntensiveColearnCheckin is Ownable {
             
             usersChecked++;
             
-            // Check all weeks from the beginning to current week
+            // Check all weeks from the deployment week to current week
             bool shouldBlock = false;
-            for (uint256 week = 0; week <= currentWeek; week++) {
+            uint256 currentDay = getCurrentDay();
+            uint256 deploymentWeek = 0; // Week 0 is the deployment week
+            for (uint256 week = deploymentWeek; week <= currentWeek; week++) {
                 uint256 weekStartDay = week * DAYS_IN_WEEK;
                 uint256 weekEndDay = weekStartDay + DAYS_IN_WEEK - 1;
+                
+                // Ensure weekEndDay doesn't exceed current day
+                if (weekEndDay > currentDay) {
+                    weekEndDay = currentDay;
+                }
                 
                 // Count missed days in this week
                 uint256 missedDays = 0;
@@ -337,11 +348,18 @@ contract IntensiveColearnCheckin is Ownable {
             }
             
             // Block user if they missed 2 or more days in any week
-            if (shouldBlock && !userAlreadyBlocked) {
-                userData.isBlocked = true;
-                usersBlocked++;
-                emit UserBlocked(user, currentWeek);
+            if (shouldBlock) {
+                if(!userAlreadyBlocked){
+                    userData.isBlocked = true;
+                    usersBlocked++;
+                    emit UserBlocked(user, currentWeek);
+                }
+            }else {
+                if(userAlreadyBlocked){
+                    userData.isBlocked = false;
+                }
             }
+
             
         }
         
@@ -485,15 +503,15 @@ contract IntensiveColearnCheckin is Ownable {
 
     // Helper functions
     function getCurrentWeek() public view returns (uint256) {
-        return getRealTime() / (DAYS_IN_WEEK * SECONDS_IN_DAY);
+        return (getRealTime() - deploymentTimestamp) / (DAYS_IN_WEEK * SECONDS_IN_DAY);
     }
 
     function getCurrentDay() public view returns (uint256) {
-        return getRealTime() / SECONDS_IN_DAY;
+        return (getRealTime() - deploymentTimestamp) / SECONDS_IN_DAY;
     }
 
-    function getWeekFromTimestamp(uint256 timestamp) public pure returns (uint256) {
-        return timestamp / (DAYS_IN_WEEK * SECONDS_IN_DAY);
+    function getWeekFromTimestamp(uint256 timestamp) public view returns (uint256) {
+        return (timestamp - deploymentTimestamp) / (DAYS_IN_WEEK * SECONDS_IN_DAY);
     }
 
     function getTotalCheckins() external view returns (uint256) {
